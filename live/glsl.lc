@@ -1,0 +1,72 @@
+import ffi, fs
+
+# This shader interface should change if your needs change.
+# prog = link_program([
+#     [gl.VERTEX_SHADER,   dir ++ "path.glsl"]
+#     [gl.FRAGMENT_SHADER, dir ++ "path.glsl"]
+# ])
+# prog.unload()
+
+link_program = (shaders):
+    id = gl.createProgram()
+    for shader in shaders.items()
+        gl.attachShader(id, read_shader_file(shader...))
+    gl.linkProgram(id)
+    status = ffi.automem(ffi.uint, 1)
+    gl.getProgramiv(id, gl.LINK_STATUS, status)
+    if status.to != gl.TRUE
+        raise ShaderLinkError(get_info_log(id))
+    return Program(id, shaders)
+
+class Program
+    +init = (self, id, shaders):
+        self.id = id
+        self.shaders = shaders
+
+    uniform = (self, name):
+        return gl.getUniformLocation(self.id, name)
+
+    attrib = (self, name):
+        return gl.getAttribLocation(self.id, name)
+
+    unload = (self):
+        gl.deleteProgram(self.id)
+        for shader in self.shaders
+            gl.deleteShader(shader)
+
+read_shader_file = (type, path):
+    so = gl.createShader(type)
+    source = encode_utf8(fs.read_file(path))
+    length = ffi.automem(ffi.uint, 1)
+    length.to = source.length
+    gl.shaderSource(so, 1, ffi.ref(source), length)
+    status = ffi.automem(ffi.uint, 1)
+    gl.compileShader(so)
+    gl.getShaderiv(so, gl.COMPILE_STATUS, status)
+    if status.to != gl.TRUE
+        raise ShaderCompileError(get_info_log(so))
+    return so
+
+get_info_log = (obj):
+    len = ffi.automem(ffi.uint)
+    gl.getObjectParameterivARB(obj, gl.OBJECT_INFO_LOG_LENGTH_ARB, len)
+    gl.getShaderiv(obj, gl.INFO_LOG_LENGTH, len)
+    log = ffi.automem(ffi.ubyte, len.to)
+    gl.getInfoLogARB(obj, len.to, null, log)
+    return log.str
+
+class ShaderCompileError extends Exception
+    +init = (self, message):
+        self.traceback = null
+        self.message = message
+
+    +repr = (self):
+        return self.message
+
+class ShaderLinkError extends Exception
+    +init = (self, message):
+        self.traceback = null
+        self.message = message
+
+    +repr = (self):
+        return self.message

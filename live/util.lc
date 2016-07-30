@@ -1,0 +1,71 @@
+import ffi
+
+array = (format, values):
+    mem = ffi.automem(format, values.length)
+    copy(mem, values)
+    return mem
+
+copy = (dst, src):
+    i = 0
+    for value in src
+        dst[i] = value
+        i += 1
+    return dst
+
+createBuffer = ():
+    i = ffi.automem(ffi.int)
+    gl.genBuffers(1, i)
+    return i.to
+
+deleteBuffer = (id):
+    i = ffi.automem(ffi.int)
+    i.to = id
+    gl.deleteBuffers(1, i)
+
+createVAO = (program, model): # model.vbo, model.format, model.stride
+    i = ffi.automem(ffi.int)
+    gl.genVertexArrays(1, i)
+    vao = i.to
+    gl.bindBuffer(gl.ARRAY_BUFFER, model.vbo)
+    gl.bindVertexArray(vao)
+    for name in model.format
+        attr = program.attrib(name)
+        if attr >= 0
+            field = model.format[name]
+            gl.enableVertexAttribArray(attr)
+            gl.vertexAttribPointer(attr, field["size"], gltypes[field["type"]],
+                field["normalized"], model.stride, ffi.cast(field["offset"], ffi.voidp))
+    return vao
+# gl.bindVertexArray(vao)
+
+deleteVAO = (vao):
+    i = ffi.automem(ffi.int)
+    i.to = vao
+    gl.deleteVertexArrays(1, i)
+
+gltypes = {
+    "float": gl.FLOAT,
+    "int": gl.INT,
+}
+
+uniform = multimethod(2)
+
+tmp_data = ffi.automem(ffi.float, 16)
+uniform[[int, mat4]] = (loc, matrix):
+    copy(tmp_data, matrix)
+    gl.uniformMatrix4fv(loc, 1, 0, tmp_data)
+
+uniform[[int, vec3]] = (loc, vector):
+    gl.uniform3f(loc, vector.x, vector.y, vector.z)
+
+uniform[[int, float]] = (loc, value):
+    gl.uniform1f(loc, value)
+
+uniform[[int, int]] = (loc, value):
+    gl.uniform1i(loc, value)
+
+# http://lolengine.net/blog/2013/09/18/beautiful-maths-quaternion-from-vectors
+# shortest_arc = (u, v):
+#     m = sqrt(2.0 + 2.0 * dot(u, v))
+#     w = (1.0 / m) * cross(u, v)
+#     return quat(w.x, w.y, w.z, 0.5 * m)

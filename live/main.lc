@@ -1,0 +1,43 @@
+import cube, glsl, util
+
+gl.enable(gl.DEPTH_TEST)
+
+# TODO: Put live-updater for shaders as well!
+shaders = dir++"../shaders"
+program = glsl.link_program({
+    gl.VERTEX_SHADER:   shaders ++ "flat.vert",
+    gl.FRAGMENT_SHADER: shaders ++ "flat.frag",
+})
+cube_vao = util.createVAO(program, cube)
+
+fovy = 60 * (pi / 180)
+cam = exnihilo()
+cam.projection = projection_matrix(fovy, canvas.width/canvas.height, 0.1, 100)
+cam.invprojection = cam.projection.invert()
+
+cube_matrix = mat4().scale(vec3(2.0, 2.0, 2.0)).translate(vec3(0.0, -1.5, -8.0))
+
+update = (now, dt):
+    return null
+
+render = ():
+    gl.clearColor(0.70, 0.77, 0.6, 1)
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT)
+    gl.useProgram(program.id)
+    util.uniform(program.uniform("projection"), cam.projection)
+    util.uniform(program.uniform("modelview"), cube_matrix)
+    util.uniform(program.uniform("model"), cube_matrix)
+    util.uniform(program.uniform("color"), vec3(0.7, 0.1, 0.1))
+    gl.bindVertexArray(cube_vao)
+    gl.drawArrays(cube.mode, 0, cube.vertex_count)
+
+dispatch_event = (event):
+    if event.type == sdl.KEYDOWN and event.key.repeat == 0
+        print(event.key.keysym.sym)
+    if event.type == sdl.KEYUP
+        print(event)
+    return null
+
+unload = ():
+    util.deleteVAO(cube_vao)
+    program.unload()

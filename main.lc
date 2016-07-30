@@ -1,0 +1,105 @@
+import api, base, ffi, platform
+
+caption = "breakout clone"
+
+# https://wiki.libsdl.org/CategoryAPI
+libSDL2_api = api.read_file("libSDL2", {})
+if platform.name == "win32"
+    sdl = ffi.library("SDL2.dll", libSDL2_api)
+else
+    sdl = ffi.library("libSDL2.so", libSDL2_api)
+# https://www.opengl.org/documentation/
+# https://www.opengl.org/sdk/docs/man/
+gl = api.library("libGL", sdl.GL_GetProcAddress)
+# https://www.libsdl.org/projects/SDL_image/
+sdl_img = api.library("libSDL2_image", null, {"libSDL2": sdl})
+
+# The system module comes a new base module for the given scope.
+# The effect is these variables are exposed to the modules that
+# come from the live scope.
+# Since the introduction only happens in one module scope,
+# every other module scope is not affected by this.
+system = module("system", base)
+system.gl = gl
+system.sdl = sdl
+system.canvas = canvas = :exnihilo()
+    width = 1200
+    height = 800
+
+# Establish live coding system
+live_scope = ModuleScope(dir ++ "live", %"import".scope)
+live_scope.base_module = system
+schedule(():
+    checks = {}
+    while true
+        sleep(1)
+        for name in live_scope
+            cache = live_scope[name]
+            info = cache.get_moduleinfo()
+            if checks.get(name, cache.mtime) < info.mtime
+                print("reimporting", name)
+                try
+                    cache.module.unload()
+                except AttributeError as error
+                    null
+                checks[name] = info.mtime
+                try
+                    live_scope.reimport(name)
+                    checks.pop(name)
+                except Exception as exc
+                    print_traceback(exc)
+)
+# This is not bulletproof.
+# Import of a new module effectively overwrites the old module.
+
+# Also, eventloop interruptions during module loading give the live program to
+# push itself running in middle of loading, effectively wrecking execution.
+
+# Some additional stability can be achieved by discarding the whole live scope
+# and reloading it a-fresh when a change is detected. In this case, you will only
+# load a whole, new fricking scope and reattach everything in it into the driver.
+
+main = ():
+    assert 0 == sdl.Init(sdl.INIT_EVERYTHING)
+        "SDL2 init:" ++ sdl.GetError()
+    assert 0 < sdl_img.Init(sdl_img.INIT_PNG)
+        "SDL2 image init"
+    sdl.GL_SetAttribute(sdl.GL_CONTEXT_MAJOR_VERSION, 4)
+    sdl.GL_SetAttribute(sdl.GL_CONTEXT_MINOR_VERSION, 4)
+    sdl.GL_SetAttribute(sdl.GL_DOUBLEBUFFER, 1)
+    sdl.GL_SetAttribute(sdl.GL_DEPTH_SIZE, 24)
+    win = sdl.CreateWindow(caption, 0, 0,
+        canvas.width, canvas.height,
+        sdl.WINDOW_OPENGL | sdl.WINDOW_SHOWN)
+    assert win, "cannot open window"
+    ctx = sdl.GL_CreateContext(win)
+    assert ctx, "cannot create opengl 4 context"
+
+    main_module = Import(live_scope.local, live_scope)("main")
+
+    was = sdl.GetTicks() / 1000.0
+    event = ffi.automem(sdl.Event)
+    running = true
+    while running
+        while sdl.PollEvent(event) != 0
+            if event.type == sdl.QUIT
+                running = false
+            else
+                main_module.dispatch_event(event)
+        if not running
+            break
+        now = sdl.GetTicks() / 1000.0
+        dt = now - was
+        was = now
+        main_module.update(now, dt)
+
+        gl.viewport(0, 0, canvas.width, canvas.height)
+        main_module.render()
+        sdl.GL_SwapWindow(win)
+        sleep(0.001) # 0.1ms delay
+
+    sdl.GL_DeleteContext(ctx)
+    sdl.DestroyWindow(win)
+    sdl_img.Quit()
+    sdl.Quit()
+    exit(0)
